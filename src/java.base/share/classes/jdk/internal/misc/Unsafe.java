@@ -1031,6 +1031,81 @@ public final class Unsafe {
     @HotSpotIntrinsicCandidate
     private native void writebackPostSync0();
 
+    /// mapped memory access
+
+    private final static long PAGE_MASK = PAGE_SIZE - 1;
+
+    /**
+     * Reserve a range of memory of Java based memory allocator.
+     *
+     * @param address   Expected address or zero if arbitrary range is required.
+     *
+     * @param size      Number of bytes to reserve. Must be multiple of PAGE_SIZE.
+     *
+     * @return Address of reserved memory or zero if not reserved.
+     */
+    public long memoryReserve(long address, long size) {
+        if (address < 0 ||
+            size < 0 || (size & PAGE_MASK) != 0) {
+            throw invalidInput();
+        }
+
+        return memoryReserve0(address, size);
+    }
+
+    /**
+     * Release a range of previously reserved memory.
+     *
+     * @param address Address of reserved memory.
+     *
+     * @param size    Number of bytes reserved. Must be multiple of PAGE_SIZE.
+     */
+    public void memoryRelease(long address, long size) {
+        if (address < 0 || (address & PAGE_MASK) != 0 ||
+            size < 0 || (size & PAGE_MASK) != 0) {
+            throw invalidInput();
+        }
+
+        memoryRelease0(address, size);
+    }
+
+    /**
+     * Commit a subrange of reserved memory.
+     *
+     * @param address Address of subrange.
+     *
+     * @param size    Number of bytes in subrange. Must be multiple of PAGE_SIZE.
+     */
+    public void memoryCommit(long address, long size) {
+        if (address < 0 || (address & PAGE_MASK) != 0 ||
+            size < 0 || (size & PAGE_MASK) != 0) {
+            throw invalidInput();
+        }
+
+        memoryCommit0(address, size);
+    }
+
+    /**
+     * Uncommit a subrange of reserved memory.
+     *
+     * @param address Address of subrange.
+     *
+     * @param size    Number of bytes in subrange. Must be multiple of PAGE_SIZE.
+     */
+    public void memoryUncommit(long address, long size) {
+        if (address < 0 || (address & PAGE_MASK) != 0 ||
+            size < 0 || (size & PAGE_MASK) != 0) {
+            throw invalidInput();
+        }
+
+        memoryUncommit0(address, size);
+    }
+
+    private native long memoryReserve0(long address, long size);
+    private native void memoryRelease0(long address, long size);
+    private native void memoryCommit0(long address, long size);
+    private native void memoryUncommit0(long address, long size);
+
     /// random queries
 
     /**

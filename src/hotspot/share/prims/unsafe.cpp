@@ -390,6 +390,28 @@ UNSAFE_ENTRY(void, Unsafe_FreeMemory0(JNIEnv *env, jobject unsafe, jlong addr)) 
   os::free(p);
 } UNSAFE_END
 
+UNSAFE_ENTRY(jlong, Unsafe_MemoryReserve0(JNIEnv *env, jobject unsafe, jlong addr, jlong size)) {
+    char* result = NULL;
+    if (addr != 0) {
+        result = os::attempt_reserve_memory_at(size, (char *)addr, -1);
+    } else {
+        result = os::reserve_memory(size, (char *)addr, 0L, -1);
+    }
+    return (jlong)result;
+} UNSAFE_END
+
+UNSAFE_ENTRY(void, Unsafe_MemoryRelease0(JNIEnv *env, jobject unsafe, jlong addr, jlong size)) {
+    os::release_memory((char *)addr, size);
+} UNSAFE_END
+
+UNSAFE_ENTRY(void, Unsafe_MemoryCommit0(JNIEnv *env, jobject unsafe, jlong addr, jlong size)) {
+    os::commit_memory((char *)addr, size, false);
+} UNSAFE_END
+
+UNSAFE_ENTRY(void, Unsafe_MemoryUncommit0(JNIEnv *env, jobject unsafe, jlong addr, jlong size)) {
+    os::uncommit_memory((char *)addr, size);
+} UNSAFE_END
+
 UNSAFE_ENTRY(void, Unsafe_SetMemory0(JNIEnv *env, jobject unsafe, jobject obj, jlong offset, jlong size, jbyte value)) {
   size_t sz = (size_t)size;
 
@@ -1101,6 +1123,11 @@ static JNINativeMethod jdk_internal_misc_Unsafe_methods[] = {
     {CC "allocateMemory0",    CC "(J)" ADR,              FN_PTR(Unsafe_AllocateMemory0)},
     {CC "reallocateMemory0",  CC "(" ADR "J)" ADR,       FN_PTR(Unsafe_ReallocateMemory0)},
     {CC "freeMemory0",        CC "(" ADR ")V",           FN_PTR(Unsafe_FreeMemory0)},
+
+    {CC "memoryReserve0",     CC "(" ADR "J" ")" ADR,    FN_PTR(Unsafe_MemoryReserve0)},
+    {CC "memoryRelease0",     CC "(" ADR "J" ")V",       FN_PTR(Unsafe_MemoryRelease0)},
+    {CC "memoryCommit0",      CC "(" ADR "J" ")V",       FN_PTR(Unsafe_MemoryCommit0)},
+    {CC "memoryUncommit0",    CC "(" ADR "J" ")V",       FN_PTR(Unsafe_MemoryUncommit0)},
 
     {CC "objectFieldOffset0", CC "(" FLD ")J",           FN_PTR(Unsafe_ObjectFieldOffset0)},
     {CC "objectFieldOffset1", CC "(" CLS LANG "String;)J", FN_PTR(Unsafe_ObjectFieldOffset1)},

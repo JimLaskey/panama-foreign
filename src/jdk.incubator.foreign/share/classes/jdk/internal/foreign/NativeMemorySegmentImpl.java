@@ -26,6 +26,7 @@
 
 package jdk.internal.foreign;
 
+import jdk.incubator.foreign.allocator.NativeAllocator;
 import jdk.incubator.foreign.MemoryAddress;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.internal.misc.Unsafe;
@@ -52,6 +53,13 @@ public class NativeMemorySegmentImpl extends AbstractMemorySegmentImpl {
     private final static long MAX_MALLOC_ALIGN = Unsafe.ADDRESS_SIZE == 4 ? 8 : 16;
 
     private static final boolean skipZeroMemory = GetBooleanAction.privilegedGetProperty("jdk.internal.foreign.skipZeroMemory");
+
+    private static final NativeAllocator nativeAllocator;
+
+    static {
+        boolean useNativeAllocator = GetBooleanAction.privilegedGetProperty("jdk.internal.foreign.useNativeAllocator");
+        nativeAllocator = useNativeAllocator ? NativeAllocator.create(0L, true, !skipZeroMemory, 16, 16, 16, 2 * 1024) : null;
+    }
 
     final long min;
 
@@ -83,16 +91,41 @@ public class NativeMemorySegmentImpl extends AbstractMemorySegmentImpl {
 
     // factories
 
-    public static MemorySegment makeNativeSegment(long bytesSize, long alignmentBytes) {
+    private static MemorySegment makeNativeSegmentNativeAllocator(long bytesSize, long alignmentBytes) {
         if (VM.isDirectMemoryPageAligned()) {
             alignmentBytes = Math.max(alignmentBytes, nioAccess.pageSize());
         }
         long alignedSize = alignmentBytes > MAX_MALLOC_ALIGN ?
                 bytesSize + (alignmentBytes - 1) :
                 bytesSize;
+        long buf = nativeAllocator.allocate(alignedSize);
+        if (buf == 0L) {
+            throw new OutOfMemoryError("Size = " + bytesSize);
+        }
+        long alignedBuf = Utils.alignUp(buf, alignmentBytes);
+        MemoryScope scope = MemoryScope.createConfined(null, new MemoryScope.CleanupAction.AtMostOnceOnly() {
+            @Override
+            void doCleanup() {
+                nativeAllocator.deallocate(buf);
+            }
+        });
+        MemorySegment segment = new NativeMemorySegmentImpl(buf, alignedSize,
+                                                            defaultAccessModes(alignedSize), scope);
+        if (alignedSize != bytesSize) {
+            long delta = alignedBuf - buf;
+            segment = segment.asSlice(delta, bytesSize);
+        }
+        return segment;
+    }
 
+    private static MemorySegment makeNativeSegmentMalloc(long bytesSize, long alignmentBytes) {
+        if (VM.isDirectMemoryPageAligned()) {
+            alignmentBytes = Math.max(alignmentBytes, nioAccess.pageSize());
+        }
+        long alignedSize = alignmentBytes > MAX_MALLOC_ALIGN ?
+                bytesSize + (alignmentBytes - 1) :
+                bytesSize;
         nioAccess.reserveMemory(alignedSize, bytesSize);
-
         long buf = unsafe.allocateMemory(alignedSize);
         if (!skipZeroMemory) {
             unsafe.setMemory(buf, alignedSize, (byte)0);
@@ -106,12 +139,17 @@ public class NativeMemorySegmentImpl extends AbstractMemorySegmentImpl {
             }
         });
         MemorySegment segment = new NativeMemorySegmentImpl(buf, alignedSize,
-                defaultAccessModes(alignedSize), scope);
+                                                                 defaultAccessModes(alignedSize), scope);
         if (alignedSize != bytesSize) {
             long delta = alignedBuf - buf;
             segment = segment.asSlice(delta, bytesSize);
         }
         return segment;
+    }
+
+    public static MemorySegment makeNativeSegment(long bytesSize, long alignmentBytes) {
+        return nativeAllocator == null ? makeNativeSegmentMalloc(bytesSize, alignmentBytes)
+                                       : makeNativeSegmentNativeAllocator(bytesSize, alignmentBytes);
     }
 
     public static MemorySegment makeNativeSegmentUnchecked(MemoryAddress min, long bytesSize, Object attachment) {
